@@ -7,24 +7,18 @@ import (
 
 	"profile-views-counter/conf"
 
+	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 type App struct {
-	Config     *conf.Config
-	Logger     *zap.Logger
-	DbRegistry *DBRegistry
-	HTTPServer *http.Server
-}
-
-type DBRegistry struct {
-	Pool *pgxpool.Pool
-}
-
-func NewDBRegistry(db *pgxpool.Pool) *DBRegistry {
-	return &DBRegistry{Pool: db}
+	Config          *conf.Config
+	Logger          *zap.Logger
+	DbRegistry      *DBRegistry
+	ServiceRegistry *ServiceRegistry
+	HTTPServer      *http.Server
 }
 
 func New(cfg *conf.Config, logger *zap.Logger) (*App, error) {
@@ -34,12 +28,19 @@ func New(cfg *conf.Config, logger *zap.Logger) (*App, error) {
 		return nil, errors.Wrap(err, "failed to connect to postgres database")
 	}
 
+	dbRegistry := NewDBRegistry(dbPool)
+	serviceRegistry := NewServiceRegistry(dbRegistry)
+	router := mux.NewRouter()
+	RegisterRoutes(router, serviceRegistry)
+
 	app := &App{
-		Config:     cfg,
-		Logger:     logger,
-		DbRegistry: NewDBRegistry(dbPool),
+		Config:          cfg,
+		Logger:          logger,
+		DbRegistry:      dbRegistry,
+		ServiceRegistry: serviceRegistry,
 		HTTPServer: &http.Server{
-			Addr: fmt.Sprintf(":%d", cfg.Port),
+			Addr:    fmt.Sprintf(":%d", cfg.Port),
+			Handler: router,
 		},
 	}
 
@@ -59,4 +60,9 @@ func (a *App) ShutDown() {
 	a.Logger.Info("shutting down application")
 	a.Logger.Info("closing database connection")
 	a.DbRegistry.Pool.Close()
+}
+
+func RegisterRoutes(router *mux.Router, sr *ServiceRegistry) {
+	router.HandleFunc("/{service}/{user}/count.svg", sr.StatsService.Handler).
+		Methods(http.MethodGet).Name("ProfileCountBadge")
 }
