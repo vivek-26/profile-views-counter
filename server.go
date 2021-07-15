@@ -1,16 +1,20 @@
 package main
 
 import (
-	"fmt"
-
+	"go.uber.org/zap"
 	"profile-views-counter/conf"
 )
 
 func main() {
-	config, err := conf.Load()
+	logger, err := zap.NewProduction()
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(config)
+	config, err := conf.Load()
+	if err != nil {
+		logger.Panic(err.Error())
+	}
+
+	logger.Info("config loaded", zap.Any("config values", config))
 }
