@@ -1,6 +1,8 @@
 package app
 
 import (
+	"net/http/httputil"
+
 	"profile-views-counter/app/routes/stats"
 
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -18,6 +20,6 @@ type ServiceRegistry struct {
 	StatsService *stats.Service
 }
 
-func NewServiceRegistry(dbr *DBRegistry) *ServiceRegistry {
-	return &ServiceRegistry{StatsService: stats.NewService(dbr.Pool)}
+func NewServiceRegistry(dbr *DBRegistry, badgeReverseProxy *httputil.ReverseProxy) *ServiceRegistry {
+	return &ServiceRegistry{StatsService: stats.NewService(dbr.Pool, badgeReverseProxy)}
 }

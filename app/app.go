@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"time"
 
 	"profile-views-counter/conf"
 
@@ -14,11 +17,12 @@ import (
 )
 
 type App struct {
-	Config          *conf.Config
-	Logger          *zap.Logger
-	DbRegistry      *DBRegistry
-	ServiceRegistry *ServiceRegistry
-	HTTPServer      *http.Server
+	Config                *conf.Config
+	Logger                *zap.Logger
+	DbRegistry            *DBRegistry
+	ServiceRegistry       *ServiceRegistry
+	HTTPServer            *http.Server
+	ShieldsIOReverseProxy *httputil.ReverseProxy
 }
 
 func New(cfg *conf.Config, logger *zap.Logger) (*App, error) {
@@ -28,8 +32,29 @@ func New(cfg *conf.Config, logger *zap.Logger) (*App, error) {
 		return nil, errors.Wrap(err, "failed to connect to postgres database")
 	}
 
+	badgeURL, err := url.Parse("https://img.shields.io/static/v1")
+	if err != nil {
+		return nil, errors.Wrap(err, "incorrect shields.io url")
+	}
+
+	badgeReverseProxy := httputil.NewSingleHostReverseProxy(badgeURL)
+	badgeReverseProxy.Director = func(req *http.Request) {
+		req.Header.Add("X-Forwarded-Host", req.Host)
+		req.Header.Add("X-Origin-Host", badgeURL.Host)
+		req.Header.Add("Cache-Control", "no-cache")
+		req.URL.Scheme = badgeURL.Scheme
+		req.URL.Host = badgeURL.Host
+		req.Host = badgeURL.Host
+		req.URL.Path = badgeURL.Path
+	}
+	badgeReverseProxy.Transport = &http.Transport{
+		MaxIdleConnsPerHost: 20,
+		MaxConnsPerHost:     20,
+		IdleConnTimeout:     12 * time.Hour,
+	}
+
 	dbRegistry := NewDBRegistry(dbPool)
-	serviceRegistry := NewServiceRegistry(dbRegistry)
+	serviceRegistry := NewServiceRegistry(dbRegistry, badgeReverseProxy)
 	router := mux.NewRouter()
 	RegisterRoutes(router, serviceRegistry)
 
@@ -42,6 +67,7 @@ func New(cfg *conf.Config, logger *zap.Logger) (*App, error) {
 			Addr:    fmt.Sprintf(":%d", cfg.Port),
 			Handler: router,
 		},
+		ShieldsIOReverseProxy: badgeReverseProxy,
 	}
 
 	return app, nil
@@ -63,6 +89,6 @@ func (a *App) ShutDown() {
 }
 
 func RegisterRoutes(router *mux.Router, sr *ServiceRegistry) {
-	router.HandleFunc("/{service}/{user}/count.svg", sr.StatsService.Handler).
+	router.HandleFunc("/stats/{service}/{user}/count.svg", sr.StatsService.Handler).
 		Methods(http.MethodGet).Name("ProfileCountBadge")
 }
