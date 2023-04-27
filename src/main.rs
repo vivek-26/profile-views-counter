@@ -5,6 +5,7 @@ use axum::{
     routing::get,
     Router,
 };
+use dotenv::dotenv;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -12,6 +13,11 @@ use std::{net::SocketAddr, time::Duration};
 
 #[tokio::main]
 async fn main() {
+    // load environment variables from .env file if we are running locally
+    if !std::env::var("PRODUCTION").is_ok() {
+        dotenv().ok();
+    }
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
