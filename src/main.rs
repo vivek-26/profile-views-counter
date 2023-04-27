@@ -14,7 +14,7 @@ use std::{net::SocketAddr, time::Duration};
 #[tokio::main]
 async fn main() {
     // load environment variables from .env file if we are running locally
-    if !std::env::var("PRODUCTION").is_ok() {
+    if std::env::var("PRODUCTION").is_err() {
         dotenv().ok();
     }
 
