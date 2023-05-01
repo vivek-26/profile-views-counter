@@ -1,5 +1,6 @@
 use axum::async_trait;
-use sqlx::{PgPool, Row};
+use sqlx::{postgres::PgPoolOptions, PgPool, Row};
+use std::time::Duration;
 
 #[async_trait]
 pub trait Datastore {
@@ -10,11 +11,21 @@ pub trait Datastore {
 #[error(transparent)]
 pub struct DataAccessError(#[from] sqlx::Error);
 
+#[derive(Clone)]
 pub struct PostgresDB(PgPool);
 
 impl PostgresDB {
-    pub fn new(db: PgPool) -> PostgresDB {
-        PostgresDB(db)
+    pub async fn new(conn_str: &str) -> PostgresDB {
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .acquire_timeout(Duration::from_secs(5))
+            .connect(conn_str)
+            .await
+            .expect("cannot connect to database");
+
+        tracing::info!("connected to database");
+
+        PostgresDB(pool)
     }
 }
 
