@@ -1,4 +1,7 @@
+mod datastore;
 mod state;
+
+use datastore::PostgresDB;
 
 use axum::{response::Html, routing::get, Router};
 use dotenv::dotenv;
@@ -7,7 +10,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use std::{net::SocketAddr, time::Duration};
 
-use state::{PostgresDB, State};
+use state::State;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
