@@ -13,7 +13,7 @@ use reqwest::header::{HeaderMap, HeaderValue};
 pub async fn profile_views_handler(
     StateExtractor(state): StateExtractor<State<PostgresDB>>,
 ) -> Response {
-    let views = state.update();
+    let views = state.update().await;
     let url = format!(
         "https://shields.io/static/v1?label=Profile%20Views&message={}&color=brightgreen",
         views

@@ -1,5 +1,9 @@
+use tokio::time;
+use tokio_stream::{wrappers::IntervalStream, StreamExt};
+
 use super::datastore::Datastore;
-use std::sync::{Arc, Mutex};
+use futures::lock::Mutex;
+use std::{sync::Arc, time::Duration};
 
 #[derive(Clone)]
 pub struct State<T: Datastore> {
@@ -24,9 +28,30 @@ impl<T: Datastore> State<T> {
         }
     }
 
-    pub fn update(&self) -> u64 {
-        let mut views = self.views.lock().unwrap();
+    pub async fn update(&self) -> u64 {
+        let mut views = self.views.lock().await;
         *views += 1;
         *views
+    }
+
+    pub async fn update_loop(&self) {
+        let mut stream = IntervalStream::new(time::interval(Duration::from_secs(60)));
+
+        while stream.next().await.is_some() {
+            let current_views = self.views.lock().await;
+
+            if let Err(err) = self.db.update_views(*current_views as i64).await {
+                tracing::error!(
+                    "failed to update database with latest profile view count: {}, reason: {}",
+                    *current_views,
+                    err
+                );
+            } else {
+                tracing::info!(
+                    "database updated with latest profile view count: {}",
+                    *current_views
+                );
+            }
+        }
     }
 }

@@ -7,6 +7,7 @@ use datastore::PostgresDB;
 use dotenv::dotenv;
 use state::State;
 use std::net::SocketAddr;
+use tokio::task;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -31,6 +32,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // initialize state
     let state = State::initialize(db).await.unwrap();
+    let state_clone = state.clone();
+
+    let _join = task::spawn(async move {
+        state_clone.update_loop().await;
+    });
 
     // build our application with some routes
     let app = Router::new()

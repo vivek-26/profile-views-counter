@@ -1,10 +1,11 @@
 use axum::async_trait;
-use sqlx::{postgres::PgPoolOptions, PgPool, Row};
+use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::time::Duration;
 
 #[async_trait]
 pub trait Datastore {
     async fn get_views(&self) -> Result<i64, DataAccessError>;
+    async fn update_views(&self, views: i64) -> Result<(), DataAccessError>;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -32,11 +33,21 @@ impl PostgresDB {
 #[async_trait]
 impl Datastore for PostgresDB {
     async fn get_views(&self) -> Result<i64, DataAccessError> {
-        let row = sqlx::query("SELECT count FROM profile_views")
+        let count: i64 = sqlx::query_scalar("SELECT count FROM profile_views")
             .fetch_one(&self.0)
-            .await?;
+            .await
+            .map_err(DataAccessError::from)?;
 
-        let count: i64 = row.try_get("count")?;
         Ok(count)
+    }
+
+    async fn update_views(&self, views: i64) -> Result<(), DataAccessError> {
+        sqlx::query("UPDATE profile_views SET count = $1 WHERE id = 1")
+            .bind(views)
+            .execute(&self.0)
+            .await
+            .map_err(DataAccessError::from)?;
+
+        Ok(())
     }
 }
