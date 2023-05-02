@@ -1,6 +1,5 @@
 use super::datastore::PostgresDB;
 use super::state::State;
-
 use anyhow::Error;
 use axum::{
     body::Bytes,
@@ -9,9 +8,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use reqwest::header::{HeaderMap, HeaderValue};
+use std::sync::Arc;
 
 pub async fn profile_views_handler(
-    StateExtractor(state): StateExtractor<State<PostgresDB>>,
+    StateExtractor(state): StateExtractor<Arc<State<PostgresDB>>>,
 ) -> Response {
     let views = state.update().await;
     let url = format!(

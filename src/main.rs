@@ -6,7 +6,7 @@ use axum::{routing::get, Router};
 use datastore::PostgresDB;
 use dotenv::dotenv;
 use state::State;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 use tokio::task;
 use tracing_subscriber::EnvFilter;
 
@@ -38,10 +38,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let db = PostgresDB::new(&db_connection_str).await;
 
     // initialize state
-    let state = State::initialize(db).await.unwrap();
+    let state = Arc::new(State::initialize(db).await.unwrap());
     let state_clone = state.clone();
 
-    let _join = task::spawn(async move {
+    let _update_loop_handle = task::spawn(async move {
         state_clone.update_loop().await;
     });
 

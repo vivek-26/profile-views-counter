@@ -1,11 +1,9 @@
-use tokio::time;
-use tokio_stream::{wrappers::IntervalStream, StreamExt};
-
 use super::datastore::Datastore;
 use futures::lock::Mutex;
 use std::{sync::Arc, time::Duration};
+use tokio::time;
+use tokio_stream::{wrappers::IntervalStream, StreamExt};
 
-#[derive(Clone)]
 pub struct State<T: Datastore> {
     db: T,
     views: Arc<Mutex<u64>>,
