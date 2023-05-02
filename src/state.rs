@@ -1,12 +1,13 @@
 use super::datastore::Datastore;
-use futures::lock::Mutex;
 use std::{sync::Arc, time::Duration};
+use tokio::sync::{Mutex, RwLock};
 use tokio::time;
 use tokio_stream::{wrappers::IntervalStream, StreamExt};
 
 pub struct State<T: Datastore> {
     db: T,
     views: Arc<Mutex<u64>>,
+    prev_views: RwLock<u64>,
 }
 
 impl<T: Datastore> State<T> {
@@ -17,6 +18,7 @@ impl<T: Datastore> State<T> {
                 Some(State {
                     db,
                     views: Arc::new(Mutex::new(count as u64)),
+                    prev_views: RwLock::new(count as u64),
                 })
             }
             Err(e) => {
@@ -36,7 +38,21 @@ impl<T: Datastore> State<T> {
         let mut stream = IntervalStream::new(time::interval(Duration::from_secs(60)));
 
         while stream.next().await.is_some() {
+            let prev_views = self.prev_views.read().await;
             let current_views = self.views.lock().await;
+
+            if *current_views == *prev_views {
+                tracing::info!(
+                    "no new updates for database, profile views: {}",
+                    *current_views
+                );
+                continue;
+            }
+
+            drop(prev_views); // give away read lock
+
+            let mut prev_views = self.prev_views.write().await;
+            *prev_views = *current_views;
 
             if let Err(err) = self.db.update_views(*current_views as i64).await {
                 tracing::error!(
