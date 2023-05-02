@@ -51,7 +51,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_state(state);
 
     // run it with hyper
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let port = std::env::var("PORT")?.parse::<u16>()?;
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     tracing::info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
