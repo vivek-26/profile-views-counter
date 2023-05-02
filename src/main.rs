@@ -8,22 +8,29 @@ use dotenv::dotenv;
 use state::State;
 use std::net::SocketAddr;
 use tokio::task;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // load environment variables from .env file if we are running locally
     if std::env::var("PRODUCTION").is_err() {
         dotenv().ok();
-    }
 
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "example_tokio_postgres=debug".into()),
+        tracing::subscriber::set_global_default(
+            tracing_subscriber::fmt()
+                .pretty()
+                .with_env_filter(EnvFilter::from_default_env())
+                .finish(),
         )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+        .expect("failed to set global default subscriber");
+    } else {
+        tracing::subscriber::set_global_default(
+            tracing_subscriber::fmt()
+                .json()
+                .with_env_filter(EnvFilter::from_default_env())
+                .finish(),
+        )
+        .expect("failed to set global default subscriber");
+    }
 
     let db_connection_str = std::env::var("DATABASE_URL").unwrap();
 
