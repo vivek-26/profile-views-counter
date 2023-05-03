@@ -48,6 +48,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // build our application with some routes
     let app = Router::new()
         .route("/count.svg", get(handler::profile_views_handler))
+        .route("/healthz", get(handler::health_check_handler))
         .with_state(state);
 
     // run it with hyper

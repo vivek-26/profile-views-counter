@@ -10,6 +10,10 @@ use axum::{
 use reqwest::header::{HeaderMap, HeaderValue};
 use std::sync::Arc;
 
+pub async fn health_check_handler() -> Response {
+    StatusCode::OK.into_response()
+}
+
 pub async fn profile_views_handler(
     StateExtractor(state): StateExtractor<Arc<State<PostgresDB>>>,
 ) -> Response {
