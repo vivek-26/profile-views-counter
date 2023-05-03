@@ -3,7 +3,10 @@ mod handler;
 mod keepalive;
 mod state;
 
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, head},
+    Router,
+};
 use datastore::PostgresDB;
 use dotenv::dotenv;
 use state::State;
@@ -51,7 +54,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // build our application with some routes
     let app = Router::new()
-        .route("/healthz", get(handler::health_check_handler))
+        .route("/healthz", head(handler::health_check_handler))
         .route("/count.svg", get(handler::profile_views_handler))
         .with_state(state);
 

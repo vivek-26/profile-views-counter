@@ -30,7 +30,7 @@ impl KeepAlive {
         while stream.next().await.is_some() {
             let response = self
                 .http_client
-                .get(format!("http://127.0.0.1:{}/healthz", self.port))
+                .head(format!("http://127.0.0.1:{}/healthz", self.port))
                 .send()
                 .await;
 
