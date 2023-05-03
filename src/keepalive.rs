@@ -6,21 +6,26 @@ use tokio_stream::{wrappers::IntervalStream, StreamExt};
 pub struct KeepAlive {
     http_client: Client,
     port: u16,
+    interval: u64,
 }
 
 impl KeepAlive {
-    pub fn new(port: u16) -> KeepAlive {
+    pub fn new(port: u16, interval: u64) -> KeepAlive {
         let http_client = reqwest::ClientBuilder::new()
             .pool_max_idle_per_host(5)
             .pool_idle_timeout(Duration::from_secs(600))
             .build()
             .expect("failed to initialize server keep alive client");
 
-        KeepAlive { http_client, port }
+        KeepAlive {
+            http_client,
+            port,
+            interval,
+        }
     }
 
     pub async fn health_check_loop(&self) {
-        let mut stream = IntervalStream::new(time::interval(Duration::from_secs(600)));
+        let mut stream = IntervalStream::new(time::interval(Duration::from_secs(self.interval)));
 
         while stream.next().await.is_some() {
             let response = self
