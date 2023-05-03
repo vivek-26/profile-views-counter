@@ -1,6 +1,6 @@
 mod datastore;
 mod handler;
-mod keepalive;
+// mod keepalive;
 mod state;
 
 use axum::{
@@ -58,20 +58,15 @@ async fn main() -> Result<(), anyhow::Error> {
         .route("/count.svg", get(handler::profile_views_handler))
         .with_state(state);
 
+    // async thread to keep server alive by hitting health check route at regular intervals
+    // let _server_keep_alive_loop_handle = task::spawn(async move {
+    //     server_keep_alive.health_check_loop().await;
+    // });
+
+    // run it with hyper
     let port = std::env::var("PORT")?
         .parse::<u16>()
         .expect("missing env variable PORT");
-    let keep_alive_interval = std::env::var("KEEPALIVE_INTERVAL_SECS")?
-        .parse::<u64>()
-        .unwrap_or(600);
-    let server_keep_alive = keepalive::KeepAlive::new(port, keep_alive_interval);
-
-    // async thread to keep server alive by hitting health check route at regular intervals
-    let _server_keep_alive_loop_handle = task::spawn(async move {
-        server_keep_alive.health_check_loop().await;
-    });
-
-    // run it with hyper
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     tracing::info!("listening on {}", addr);
     axum::Server::bind(&addr)
