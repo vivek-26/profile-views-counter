@@ -28,6 +28,7 @@ async fn main() -> Result<(), anyhow::Error> {
             tracing_subscriber::fmt()
                 .json()
                 .with_env_filter(EnvFilter::from_default_env())
+                .with_target(false)
                 .finish(),
         )
         .expect("failed to set global default subscriber");
