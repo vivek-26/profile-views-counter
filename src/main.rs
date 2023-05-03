@@ -1,5 +1,6 @@
 mod datastore;
 mod handler;
+mod keepalive;
 mod state;
 
 use axum::{routing::get, Router};
@@ -32,7 +33,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .expect("failed to set global default subscriber");
     }
 
-    let db_connection_str = std::env::var("DATABASE_URL").unwrap();
+    let db_connection_str =
+        std::env::var("DATABASE_URL").expect("missing env variable DATABASE_URL");
 
     // setup database connection pool
     let db = PostgresDB::new(&db_connection_str).await;
@@ -41,6 +43,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let state = Arc::new(State::initialize(db).await.unwrap());
     let state_clone = state.clone();
 
+    // async thread to update profile views in database at regular intervals
     let _update_loop_handle = task::spawn(async move {
         state_clone.update_loop().await;
     });
@@ -51,8 +54,17 @@ async fn main() -> Result<(), anyhow::Error> {
         .route("/healthz", get(handler::health_check_handler))
         .with_state(state);
 
+    let port = std::env::var("PORT")?
+        .parse::<u16>()
+        .expect("missing env variable PORT");
+    let server_keep_alive = keepalive::KeepAlive::new(port);
+
+    // async thread to keep server alive by hitting health check route at regular intervals
+    let _server_keep_alive_loop_handle = task::spawn(async move {
+        server_keep_alive.health_check_loop().await;
+    });
+
     // run it with hyper
-    let port = std::env::var("PORT")?.parse::<u16>()?;
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     tracing::info!("listening on {}", addr);
     axum::Server::bind(&addr)
