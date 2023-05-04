@@ -1,0 +1,13 @@
+app = "vk-profile-views"
+primary_region = "sjc"
+
+[env]
+RUST_LOG = "INFO"
+PORT = "8080"
+PRODUCTION = "1"
+
+[http_service]
+internal_port = 8080
+force_https = true
+auto_stop_machines = true
+auto_start_machines = true
