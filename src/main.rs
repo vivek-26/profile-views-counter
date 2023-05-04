@@ -10,31 +10,38 @@ use axum::{
 use datastore::PostgresDB;
 use dotenv::dotenv;
 use state::State;
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::task;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    if std::env::var("PRODUCTION").is_err() {
-        dotenv().ok();
+    let is_production = std::env::var("PRODUCTION").is_ok();
+    match is_production {
+        // local env
+        false => {
+            dotenv().ok();
 
-        tracing::subscriber::set_global_default(
-            tracing_subscriber::fmt()
-                .pretty()
-                .with_env_filter(EnvFilter::from_default_env())
-                .finish(),
-        )
-        .expect("failed to set global default subscriber");
-    } else {
-        tracing::subscriber::set_global_default(
-            tracing_subscriber::fmt()
-                .json()
-                .with_env_filter(EnvFilter::from_default_env())
-                .with_target(false)
-                .finish(),
-        )
-        .expect("failed to set global default subscriber");
+            tracing::subscriber::set_global_default(
+                tracing_subscriber::fmt()
+                    .pretty()
+                    .with_env_filter(EnvFilter::from_default_env())
+                    .finish(),
+            )
+            .expect("failed to set global default subscriber");
+        }
+        // production env
+        true => {
+            tracing::subscriber::set_global_default(
+                tracing_subscriber::fmt()
+                    .json()
+                    .with_env_filter(EnvFilter::from_default_env())
+                    .with_target(false)
+                    .finish(),
+            )
+            .expect("failed to set global default subscriber");
+        }
     }
 
     let db_connection_str =
@@ -67,8 +74,18 @@ async fn main() -> Result<(), anyhow::Error> {
     let port = std::env::var("PORT")?
         .parse::<u16>()
         .expect("missing env variable PORT");
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+
+    let addr: SocketAddr = match is_production {
+        false => format!("127.0.0.1:{}", port)
+            .parse()
+            .expect("could not parse socket address"),
+        true => format!("[::]:{}", port) // for fly.io
+            .parse()
+            .expect("could not parse socket address"),
+    };
+
     tracing::info!("listening on {}", addr);
+
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
