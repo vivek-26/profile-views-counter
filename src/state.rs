@@ -68,4 +68,8 @@ impl<T: Datastore> State<T> {
             }
         }
     }
+
+    pub async fn destroy(&self) {
+        self.db.close_connection().await;
+    }
 }

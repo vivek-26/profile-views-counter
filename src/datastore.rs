@@ -6,6 +6,7 @@ use std::time::Duration;
 pub trait Datastore {
     async fn get_views(&self) -> Result<i64, DataAccessError>;
     async fn update_views(&self, views: i64) -> Result<(), DataAccessError>;
+    async fn close_connection(&self);
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -49,5 +50,9 @@ impl Datastore for PostgresDB {
             .map_err(DataAccessError::from)?;
 
         Ok(())
+    }
+
+    async fn close_connection(&self) {
+        self.0.close().await;
     }
 }

@@ -12,7 +12,7 @@ use dotenv::dotenv;
 use state::State;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::task;
+use tokio::{signal, task};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -53,6 +53,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // initialize state
     let state = Arc::new(State::initialize(db).await.unwrap());
     let state_clone = state.clone();
+    let state_destory_clone = state.clone();
 
     // async thread to update profile views in database at regular intervals
     let _update_loop_handle = task::spawn(async move {
@@ -84,12 +85,45 @@ async fn main() -> Result<(), anyhow::Error> {
             .expect("could not parse socket address"),
     };
 
-    tracing::info!("listening on {}", addr);
-
-    axum::Server::bind(&addr)
+    let server = axum::Server::bind(&addr)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .with_graceful_shutdown(shutdown_signal());
+
+    tracing::info!("server running on {}", addr);
+
+    if let Err(err) = server.await {
+        tracing::error!("server encountered an error: {}", err);
+    }
+
+    // cleanup resources
+    state_destory_clone.destroy().await;
+    tracing::info!("database connection closed, cleanup complete");
 
     Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install ctrl+c handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::interrupt())
+            .expect("failed to install interrupt signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("shutdown signal received");
 }
