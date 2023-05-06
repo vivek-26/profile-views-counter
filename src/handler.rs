@@ -1,13 +1,11 @@
 use super::datastore::PostgresDB;
+use super::fetcher::{BadgeFetcher, Fetcher};
 use super::state::State;
-use anyhow::Error;
 use axum::{
-    body::Bytes,
-    extract::State as StateExtractor,
     http::StatusCode,
     response::{IntoResponse, Response},
+    Extension,
 };
-use reqwest::header::{HeaderMap, HeaderValue};
 use std::sync::Arc;
 
 pub async fn health_check_handler() -> Response {
@@ -15,15 +13,12 @@ pub async fn health_check_handler() -> Response {
 }
 
 pub async fn profile_views_handler(
-    StateExtractor(state): StateExtractor<Arc<State<PostgresDB>>>,
+    state: Extension<Arc<State<PostgresDB>>>,
+    badge_fetcher: Extension<Arc<BadgeFetcher>>,
 ) -> Response {
     let views = state.update().await;
-    let url = format!(
-        "https://shields.io/static/v1?label=Profile%20Views&message={}&color=brightgreen",
-        views
-    );
 
-    match fetch_badge(&url).await {
+    match badge_fetcher.get_badge(views.to_string()).await {
         Ok(badge) => (
             // docs - https://docs.rs/axum/latest/axum/response/index.html
             StatusCode::OK,
@@ -42,24 +37,4 @@ pub async fn profile_views_handler(
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
-}
-
-async fn fetch_badge(url: &str) -> Result<Bytes, Error> {
-    tracing::info!("badge url: {}", url);
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "Cache-Control",
-        HeaderValue::from_static("max-age=0, no-cache, no-store, must-revalidate"),
-    );
-
-    let client = reqwest::Client::new();
-    let response = client
-        .get(url)
-        .headers(headers)
-        .send()
-        .await?
-        .bytes()
-        .await?;
-
-    Ok(response)
 }
