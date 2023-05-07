@@ -1,5 +1,6 @@
-use reqwest::{Client, StatusCode};
 use std::time::Duration;
+
+use reqwest::{Client, StatusCode};
 use tokio::time;
 use tokio_stream::{wrappers::IntervalStream, StreamExt};
 

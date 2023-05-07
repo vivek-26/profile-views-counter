@@ -1,6 +1,7 @@
+use std::time::Duration;
+
 use axum::async_trait;
 use sqlx::{postgres::PgPoolOptions, PgPool};
-use std::time::Duration;
 
 #[async_trait]
 pub trait Datastore {
