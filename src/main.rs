@@ -1,19 +1,21 @@
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use axum::routing::{get, head};
+use axum::Router;
+use dotenv::dotenv;
+use tokio::{signal, task};
+use tracing_subscriber::EnvFilter;
+
+use datastore::PostgresDB;
+use fetcher::BadgeFetcher;
+use state::State;
+
 mod datastore;
 mod handler;
 // mod keepalive;
 mod fetcher;
 mod state;
-
-use axum::routing::{get, head};
-use axum::{Extension, Router};
-use datastore::PostgresDB;
-use dotenv::dotenv;
-use fetcher::BadgeFetcher;
-use state::State;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use tokio::{signal, task};
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -50,13 +52,13 @@ async fn main() -> Result<(), anyhow::Error> {
     // setup database connection pool
     let db = PostgresDB::new(&db_connection_str).await;
 
-    // initialize state
-    let state = Arc::new(State::initialize(db).await.unwrap());
-    let state_clone = state.clone();
-    let state_destory_clone = state.clone();
-
     // initialize badge fetcher
-    let badge_fetcher = Arc::new(BadgeFetcher::new());
+    let badge_fetcher = BadgeFetcher::new()?;
+
+    // initialize state
+    let state = Arc::new(State::initialize(db, badge_fetcher).await.unwrap());
+    let state_clone = state.clone();
+    let state_destroy_clone = state.clone();
 
     // async thread to update profile views in database at regular intervals
     let _update_loop_handle = task::spawn(async move {
@@ -67,8 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/healthz", head(handler::health_check_handler))
         .route("/count.svg", get(handler::profile_views_handler))
-        .layer(Extension(state))
-        .layer(Extension(badge_fetcher));
+        .with_state(state);
 
     // async thread to keep server alive by hitting health check route at regular intervals
     // let _server_keep_alive_loop_handle = task::spawn(async move {
@@ -100,7 +101,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // cleanup resources
-    state_destory_clone.destroy().await;
+    state_destroy_clone.destroy().await;
     tracing::info!("database connection closed, cleanup complete");
 
     Ok(())

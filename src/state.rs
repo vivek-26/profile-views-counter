@@ -1,24 +1,34 @@
-use super::datastore::Datastore;
 use std::{sync::Arc, time::Duration};
+
 use tokio::sync::{Mutex, RwLock};
 use tokio::time;
 use tokio_stream::{wrappers::IntervalStream, StreamExt};
 
-pub struct State<T: Datastore> {
+use super::datastore::Datastore;
+use super::fetcher::Fetcher;
+
+pub struct State<T: Datastore, F: Fetcher> {
     db: T,
     views: Arc<Mutex<u64>>,
     prev_views: RwLock<u64>,
+    pub badge_fetcher: F,
 }
 
-impl<T: Datastore> State<T> {
-    pub async fn initialize(db: T) -> Option<State<T>> {
+impl<T, F> State<T, F>
+where
+    T: Datastore,
+    F: Fetcher,
+{
+    pub async fn initialize(db: T, badge_fetcher: F) -> Option<State<T, F>> {
         match db.get_views().await {
             Ok(count) => {
                 tracing::info!("state initialized, current views: {}", count);
+
                 Some(State {
                     db,
                     views: Arc::new(Mutex::new(count as u64)),
                     prev_views: RwLock::new(count as u64),
+                    badge_fetcher,
                 })
             }
             Err(e) => {

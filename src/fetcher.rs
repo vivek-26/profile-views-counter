@@ -1,7 +1,8 @@
+use std::time::Duration;
+
 use anyhow::Error;
 use axum::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue};
-use std::time::Duration;
 
 #[async_trait]
 pub trait Fetcher {
@@ -16,7 +17,7 @@ pub struct BadgeFetcher {
 }
 
 impl BadgeFetcher {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, Error> {
         // default headers
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -29,15 +30,14 @@ impl BadgeFetcher {
             .pool_max_idle_per_host(5)
             .pool_idle_timeout(Duration::from_secs(120))
             .timeout(Duration::from_secs(5))
-            .build()
-            .expect("failed to create http client for fetching badges");
+            .build()?;
 
-        BadgeFetcher {
+        Ok(BadgeFetcher {
             client,
             badge_url: "https://shields.io/static/v1".to_string(),
             label: "Profile%20Views".to_string(),
             color: "brightgreen".to_string(),
-        }
+        })
     }
 }
 

@@ -1,24 +1,25 @@
-use super::datastore::PostgresDB;
-use super::fetcher::{BadgeFetcher, Fetcher};
-use super::state::State;
+use std::sync::Arc;
+
 use axum::{
+    extract::State as StateExtractor,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Extension,
 };
-use std::sync::Arc;
+
+use super::datastore::Datastore;
+use super::fetcher::Fetcher;
+use super::state::State;
 
 pub async fn health_check_handler() -> Response {
     StatusCode::OK.into_response()
 }
 
 pub async fn profile_views_handler(
-    state: Extension<Arc<State<PostgresDB>>>,
-    badge_fetcher: Extension<Arc<BadgeFetcher>>,
+    StateExtractor(state): StateExtractor<Arc<State<impl Datastore, impl Fetcher>>>,
 ) -> Response {
     let views = state.update().await;
 
-    match badge_fetcher.get_badge(views.to_string()).await {
+    match state.badge_fetcher.get_badge(views.to_string()).await {
         Ok(badge) => (
             // docs - https://docs.rs/axum/latest/axum/response/index.html
             StatusCode::OK,
