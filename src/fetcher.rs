@@ -5,15 +5,13 @@ use axum::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue};
 
 #[async_trait]
-pub trait Fetcher {
-    async fn get_badge(&self, message: String) -> Result<String, Error>;
+pub trait SheildsIO {
+    async fn get_badge(&self, query_params: String) -> Result<String, Error>;
 }
 
 pub struct BadgeFetcher {
     client: reqwest::Client,
     badge_url: String,
-    label: String,
-    color: String,
 }
 
 impl BadgeFetcher {
@@ -35,21 +33,16 @@ impl BadgeFetcher {
         Ok(BadgeFetcher {
             client,
             badge_url: "https://shields.io/static/v1".to_string(),
-            label: "Profile%20Views".to_string(),
-            color: "brightgreen".to_string(),
         })
     }
 }
 
 #[async_trait]
-impl Fetcher for BadgeFetcher {
-    async fn get_badge(&self, message: String) -> Result<String, Error> {
-        let url = format!(
-            "{}?label={}&message={}&color={}",
-            self.badge_url, self.label, message, self.color
-        );
+impl SheildsIO for BadgeFetcher {
+    async fn get_badge(&self, query_params: String) -> Result<String, Error> {
+        let url = format!("{}?{}", self.badge_url, query_params);
 
-        tracing::info!("fetching badge, message: {}", message);
+        tracing::info!("fetching badge, params: {}", query_params);
         let response = self.client.get(url).send().await?.text().await?;
 
         Ok(response)

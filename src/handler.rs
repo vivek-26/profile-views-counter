@@ -1,25 +1,38 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::State as StateExtractor,
+    extract::{Query, State as StateExtractor},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use serde::Deserialize;
 
 use super::datastore::Datastore;
-use super::fetcher::Fetcher;
+use super::fetcher::SheildsIO;
 use super::state::State;
+
+#[derive(Deserialize)]
+pub struct BadgeParams {
+    label: String,
+    color: String,
+    style: String,
+}
 
 pub async fn health_check_handler() -> Response {
     StatusCode::OK.into_response()
 }
 
 pub async fn profile_views_handler(
-    StateExtractor(state): StateExtractor<Arc<State<impl Datastore, impl Fetcher>>>,
+    StateExtractor(state): StateExtractor<Arc<State<impl Datastore, impl SheildsIO>>>,
+    query: Query<BadgeParams>,
 ) -> Response {
     let views = state.update().await;
+    let badge_params = format!(
+        "label={}&message={}&color={}&style={}",
+        query.label, views, query.color, query.style
+    );
 
-    match state.badge_fetcher.get_badge(views.to_string()).await {
+    match state.badge_fetcher.get_badge(badge_params).await {
         Ok(badge) => (
             // docs - https://docs.rs/axum/latest/axum/response/index.html
             StatusCode::OK,

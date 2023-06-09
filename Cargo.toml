@@ -16,3 +16,4 @@ thiserror = "1.0.40"
 sqlx = { version = "0.6.3", features = ["runtime-tokio-rustls", "any", "postgres"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+serde = "1.0.164"
