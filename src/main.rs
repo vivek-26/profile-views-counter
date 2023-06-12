@@ -9,7 +9,7 @@ use tracing_subscriber::EnvFilter;
 
 use badge::ShieldsIO;
 use datastore::PostgresDB;
-use state::State;
+use state::AppState;
 
 mod badge;
 mod datastore;
@@ -56,20 +56,20 @@ async fn main() -> Result<(), anyhow::Error> {
     let shields_io_badge = ShieldsIO::new()?;
 
     // initialize state
-    let state = Arc::new(State::initialize(db, shields_io_badge).await.unwrap());
-    let state_clone = state.clone();
-    let state_destroy_clone = state.clone();
+    let app_state = Arc::new(AppState::initialize(db, shields_io_badge).await.unwrap());
+    let app_state_clone = app_state.clone();
+    let app_state_destroy_clone = app_state.clone();
 
     // async thread to update profile views in database at regular intervals
     let _update_loop_handle = task::spawn(async move {
-        state_clone.update_loop().await;
+        app_state_clone.update_loop().await;
     });
 
     // setup application routes
     let app = Router::new()
         .route("/healthz", head(handler::health_check_handler))
         .route("/count.svg", get(handler::profile_views_handler))
-        .with_state(state);
+        .with_state(app_state);
 
     // async thread to keep server alive by hitting health check route at regular intervals
     // let _server_keep_alive_loop_handle = task::spawn(async move {
@@ -103,7 +103,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // cleanup resources on shutdown
-    state_destroy_clone.destroy().await;
+    app_state_destroy_clone.destroy().await;
     tracing::info!("database connection closed, cleanup complete");
 
     Ok(())

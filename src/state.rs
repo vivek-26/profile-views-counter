@@ -7,24 +7,24 @@ use tokio_stream::{wrappers::IntervalStream, StreamExt};
 use super::badge::Fetcher;
 use super::datastore::Datastore;
 
-pub struct State<T: Datastore, F: Fetcher> {
+pub struct AppState<T: Datastore, F: Fetcher> {
     db: T,
     views: Arc<Mutex<u64>>,
     prev_views: RwLock<u64>,
     pub badge_fetcher: F,
 }
 
-impl<T, F> State<T, F>
+impl<T, F> AppState<T, F>
 where
     T: Datastore,
     F: Fetcher,
 {
-    pub async fn initialize(db: T, badge_fetcher: F) -> Option<State<T, F>> {
+    pub async fn initialize(db: T, badge_fetcher: F) -> Option<AppState<T, F>> {
         match db.get_views().await {
             Ok(count) => {
                 tracing::info!("state initialized, current views: {}", count);
 
-                Some(State {
+                Some(AppState {
                     db,
                     views: Arc::new(Mutex::new(count as u64)),
                     prev_views: RwLock::new(count as u64),
