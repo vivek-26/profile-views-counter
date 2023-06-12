@@ -7,14 +7,14 @@ use dotenv::dotenv;
 use tokio::{signal, task};
 use tracing_subscriber::EnvFilter;
 
+use badge::ShieldsIO;
 use datastore::PostgresDB;
-use fetcher::BadgeFetcher;
 use state::State;
 
+mod badge;
 mod datastore;
 mod handler;
 // mod keepalive;
-mod fetcher;
 mod state;
 
 #[tokio::main]
@@ -49,14 +49,14 @@ async fn main() -> Result<(), anyhow::Error> {
     let db_connection_str =
         std::env::var("DATABASE_URL").expect("missing env variable DATABASE_URL");
 
-    // setup database connection pool
+    // setup postgres database connection
     let db = PostgresDB::new(&db_connection_str).await;
 
-    // initialize badge fetcher
-    let badge_fetcher = BadgeFetcher::new()?;
+    // initialize shields io badge
+    let shields_io_badge = ShieldsIO::new()?;
 
     // initialize state
-    let state = Arc::new(State::initialize(db, badge_fetcher).await.unwrap());
+    let state = Arc::new(State::initialize(db, shields_io_badge).await.unwrap());
     let state_clone = state.clone();
     let state_destroy_clone = state.clone();
 
@@ -65,7 +65,7 @@ async fn main() -> Result<(), anyhow::Error> {
         state_clone.update_loop().await;
     });
 
-    // build our application with some routes
+    // setup application routes
     let app = Router::new()
         .route("/healthz", head(handler::health_check_handler))
         .route("/count.svg", get(handler::profile_views_handler))
@@ -76,7 +76,7 @@ async fn main() -> Result<(), anyhow::Error> {
     //     server_keep_alive.health_check_loop().await;
     // });
 
-    // run it with hyper
+    // read port from env variable
     let port = std::env::var("PORT")?
         .parse::<u16>()
         .expect("missing env variable PORT");
@@ -90,17 +90,19 @@ async fn main() -> Result<(), anyhow::Error> {
             .expect("could not parse socket address"),
     };
 
+    // start server
     let server = axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .with_graceful_shutdown(shutdown_signal());
 
     tracing::info!("server running on {}", addr);
 
+    // block until server shuts down
     if let Err(err) = server.await {
         tracing::error!("server encountered an error: {}", err);
     }
 
-    // cleanup resources
+    // cleanup resources on shutdown
     state_destroy_clone.destroy().await;
     tracing::info!("database connection closed, cleanup complete");
 

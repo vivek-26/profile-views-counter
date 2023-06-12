@@ -3,18 +3,40 @@ use std::time::Duration;
 use anyhow::Error;
 use axum::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue};
+use serde::Deserialize;
 
 #[async_trait]
-pub trait SheildsIO {
-    async fn get_badge(&self, query_params: String) -> Result<String, Error>;
+pub trait Fetcher {
+    async fn fetch(&self, query_params: String) -> Result<String, Error>;
 }
 
-pub struct BadgeFetcher {
+pub struct ShieldsIO {
     client: reqwest::Client,
-    badge_url: String,
+    service_url: String,
 }
 
-impl BadgeFetcher {
+#[derive(Deserialize)]
+pub struct ShieldsIOParams {
+    label: String,
+    color: String,
+    style: String,
+}
+
+impl ShieldsIOParams {
+    pub fn label(&self) -> &str {
+        self.label.as_ref()
+    }
+
+    pub fn color(&self) -> &str {
+        self.color.as_ref()
+    }
+
+    pub fn style(&self) -> &str {
+        self.style.as_ref()
+    }
+}
+
+impl ShieldsIO {
     pub fn new() -> Result<Self, Error> {
         // default headers
         let mut headers = HeaderMap::new();
@@ -30,17 +52,17 @@ impl BadgeFetcher {
             .timeout(Duration::from_secs(5))
             .build()?;
 
-        Ok(BadgeFetcher {
+        Ok(ShieldsIO {
             client,
-            badge_url: "https://shields.io/static/v1".to_string(),
+            service_url: "https://shields.io/static/v1".to_string(),
         })
     }
 }
 
 #[async_trait]
-impl SheildsIO for BadgeFetcher {
-    async fn get_badge(&self, query_params: String) -> Result<String, Error> {
-        let url = format!("{}?{}", self.badge_url, query_params);
+impl Fetcher for ShieldsIO {
+    async fn fetch(&self, query_params: String) -> Result<String, Error> {
+        let url = format!("{}?{}", self.service_url, query_params);
 
         tracing::info!("fetching badge, params: {}", query_params);
         let response = self.client.get(url).send().await?.text().await?;
