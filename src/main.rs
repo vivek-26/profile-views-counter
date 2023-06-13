@@ -8,7 +8,7 @@ use tokio::{signal, task};
 use tracing_subscriber::EnvFilter;
 
 use badge::ShieldsIO;
-use datastore::PostgresDB;
+use datastore::Xata;
 use state::AppState;
 
 mod badge;
@@ -46,11 +46,8 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    let db_connection_str =
-        std::env::var("DATABASE_URL").expect("missing env variable DATABASE_URL");
-
-    // setup postgres database connection
-    let db = PostgresDB::new(&db_connection_str).await;
+    // setup xata serverless db client
+    let db = Xata::new()?;
 
     // initialize shields io badge
     let shields_io_badge = ShieldsIO::new()?;
