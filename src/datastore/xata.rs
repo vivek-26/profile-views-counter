@@ -5,7 +5,7 @@ use axum::async_trait;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 
-use super::datastore::Datastore;
+use super::DatastoreOperations;
 
 pub struct Xata {
     client: reqwest::Client,
@@ -65,7 +65,7 @@ impl Xata {
 }
 
 #[async_trait]
-impl Datastore for Xata {
+impl DatastoreOperations for Xata {
     async fn get_views(&self) -> Result<i64, Error> {
         let url = format!("{}/data/{}", self.table_endpoint, self.record_id);
         let response = self.client.get(url).send().await?;

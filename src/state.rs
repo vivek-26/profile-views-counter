@@ -5,9 +5,9 @@ use tokio::time;
 use tokio_stream::{wrappers::IntervalStream, StreamExt};
 
 use super::badge::Fetcher;
-use super::datastore::Datastore;
+use super::datastore::DatastoreOperations;
 
-pub struct AppState<T: Datastore, F: Fetcher> {
+pub struct AppState<T: DatastoreOperations, F: Fetcher> {
     db: T,
     views: Arc<Mutex<u64>>,
     prev_views: RwLock<u64>,
@@ -16,7 +16,7 @@ pub struct AppState<T: Datastore, F: Fetcher> {
 
 impl<T, F> AppState<T, F>
 where
-    T: Datastore,
+    T: DatastoreOperations,
     F: Fetcher,
 {
     pub async fn initialize(db: T, badge_fetcher: F) -> Option<AppState<T, F>> {

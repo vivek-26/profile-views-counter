@@ -7,7 +7,7 @@ use axum::{
 };
 
 use super::badge::{Fetcher, ShieldsIOParams};
-use super::datastore::Datastore;
+use super::datastore::DatastoreOperations;
 use super::state::AppState;
 
 pub async fn health_check_handler() -> Response {
@@ -15,7 +15,7 @@ pub async fn health_check_handler() -> Response {
 }
 
 pub async fn profile_views_handler(
-    StateExtractor(state): StateExtractor<Arc<AppState<impl Datastore, impl Fetcher>>>,
+    StateExtractor(state): StateExtractor<Arc<AppState<impl DatastoreOperations, impl Fetcher>>>,
     query: Query<ShieldsIOParams>,
 ) -> Response {
     let views = state.update().await;

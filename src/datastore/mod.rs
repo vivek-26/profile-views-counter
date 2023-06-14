@@ -1,5 +1,5 @@
-pub use datastore::Datastore;
+pub use operations::Operations as DatastoreOperations;
 pub use xata::Xata;
 
-mod datastore;
+mod operations;
 mod xata;
