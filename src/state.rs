@@ -4,10 +4,10 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::time;
 use tokio_stream::{wrappers::IntervalStream, StreamExt};
 
-use super::badge::Fetcher;
+use super::badge::ShieldsIoFetcher;
 use super::datastore::DatastoreOperations;
 
-pub struct AppState<T: DatastoreOperations, F: Fetcher> {
+pub struct AppState<T: DatastoreOperations, F: ShieldsIoFetcher> {
     db: T,
     views: Arc<Mutex<u64>>,
     prev_views: RwLock<u64>,
@@ -17,7 +17,7 @@ pub struct AppState<T: DatastoreOperations, F: Fetcher> {
 impl<T, F> AppState<T, F>
 where
     T: DatastoreOperations,
-    F: Fetcher,
+    F: ShieldsIoFetcher,
 {
     pub async fn initialize(db: T, badge_fetcher: F) -> Option<AppState<T, F>> {
         match db.get_views().await {

@@ -6,7 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-use super::badge::{Fetcher, ShieldsIOParams};
+use super::badge::{ShieldsIoFetcher, ShieldsIoParams};
 use super::datastore::DatastoreOperations;
 use super::state::AppState;
 
@@ -15,19 +15,14 @@ pub async fn health_check_handler() -> Response {
 }
 
 pub async fn profile_views_handler(
-    StateExtractor(state): StateExtractor<Arc<AppState<impl DatastoreOperations, impl Fetcher>>>,
-    query: Query<ShieldsIOParams>,
+    StateExtractor(state): StateExtractor<
+        Arc<AppState<impl DatastoreOperations, impl ShieldsIoFetcher>>,
+    >,
+    query: Query<ShieldsIoParams>,
 ) -> Response {
     let views = state.update().await;
-    let badge_params = format!(
-        "label={}&message={}&color={}&style={}",
-        query.label(),
-        views,
-        query.color(),
-        query.style(),
-    );
 
-    match state.badge_fetcher.fetch(badge_params).await {
+    match state.badge_fetcher.fetch(&query, views).await {
         Ok(badge) => (
             // docs - https://docs.rs/axum/latest/axum/response/index.html
             StatusCode::OK,

@@ -7,7 +7,7 @@ use dotenv::dotenv;
 use tokio::{signal, task};
 use tracing_subscriber::EnvFilter;
 
-use badge::ShieldsIO;
+use badge::Shields;
 use datastore::Xata;
 use state::AppState;
 
@@ -50,7 +50,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let db = Xata::new()?;
 
     // initialize shields io badge
-    let shields_io_badge = ShieldsIO::new()?;
+    let shields_io_badge = Shields::new()?;
 
     // initialize state
     let app_state = Arc::new(AppState::initialize(db, shields_io_badge).await.unwrap());
