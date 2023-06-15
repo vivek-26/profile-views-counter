@@ -19,32 +19,8 @@ mod state;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let is_production = std::env::var("PRODUCTION").is_ok();
-    match is_production {
-        // local env
-        false => {
-            dotenv().ok();
-
-            tracing::subscriber::set_global_default(
-                tracing_subscriber::fmt()
-                    .pretty()
-                    .with_env_filter(EnvFilter::from_default_env())
-                    .finish(),
-            )
-            .expect("failed to set global default subscriber");
-        }
-        // production env
-        true => {
-            tracing::subscriber::set_global_default(
-                tracing_subscriber::fmt()
-                    .json()
-                    .with_env_filter(EnvFilter::from_default_env())
-                    .with_target(false)
-                    .finish(),
-            )
-            .expect("failed to set global default subscriber");
-        }
-    }
+    let is_production_env = std::env::var("PRODUCTION").is_ok();
+    setup_logger(is_production_env);
 
     // setup xata serverless db client
     let db = Xata::new()?;
@@ -74,17 +50,13 @@ async fn main() -> Result<(), anyhow::Error> {
     // });
 
     // read port from env variable
-    let port = std::env::var("PORT")?
-        .parse::<u16>()
-        .expect("missing env variable PORT");
+    let port = std::env::var("PORT")
+        .expect("missing env variable PORT")
+        .parse::<u16>()?;
 
-    let addr: SocketAddr = match is_production {
-        false => format!("127.0.0.1:{}", port)
-            .parse()
-            .expect("could not parse socket address"),
-        true => format!("[::]:{}", port) // for fly.io
-            .parse()
-            .expect("could not parse socket address"),
+    let addr: SocketAddr = match is_production_env {
+        false => format!("127.0.0.1:{}", port).parse()?,
+        true => format!("[::]:{}", port).parse()?, // for fly.io
     };
 
     // start server
@@ -104,6 +76,34 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing::info!("database connection closed, cleanup complete");
 
     Ok(())
+}
+
+fn setup_logger(is_production_env: bool) {
+    match is_production_env {
+        // local env
+        false => {
+            dotenv().ok();
+
+            tracing::subscriber::set_global_default(
+                tracing_subscriber::fmt()
+                    .pretty()
+                    .with_env_filter(EnvFilter::from_default_env())
+                    .finish(),
+            )
+            .expect("failed to set global default subscriber");
+        }
+        // production env
+        true => {
+            tracing::subscriber::set_global_default(
+                tracing_subscriber::fmt()
+                    .json()
+                    .with_env_filter(EnvFilter::from_default_env())
+                    .with_target(false)
+                    .finish(),
+            )
+            .expect("failed to set global default subscriber");
+        }
+    }
 }
 
 async fn shutdown_signal() {
