@@ -10,7 +10,7 @@ use super::datastore::DatastoreOperations;
 pub struct AppState<T: DatastoreOperations, F: ShieldsIoFetcher> {
     db: T,
     views: Arc<Mutex<u64>>,
-    prev_views: RwLock<u64>,
+    prev_views: Arc<RwLock<u64>>,
     pub badge_fetcher: F,
 }
 
@@ -27,7 +27,7 @@ where
                 Some(AppState {
                     db,
                     views: Arc::new(Mutex::new(count as u64)),
-                    prev_views: RwLock::new(count as u64),
+                    prev_views: Arc::new(RwLock::new(count as u64)),
                     badge_fetcher,
                 })
             }

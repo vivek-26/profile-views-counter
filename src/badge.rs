@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::{collections::HashMap, time::Duration};
 
 use anyhow::Error;
@@ -32,7 +33,7 @@ impl ShieldsIoParams {
     }
 
     fn to_query_string_template(&self, views: u64) -> (String, String) {
-        let padding = views.to_string().chars().map(|_| '*').collect::<String>();
+        let padding = "*".repeat(views.to_string().len());
         let query_string_template = format!(
             "label={}&color={}&style={}&message={}",
             self.label(),
@@ -60,20 +61,20 @@ impl std::fmt::Display for ShieldsIoParams {
 pub struct Shields {
     client: reqwest::Client,
     service_url: String,
-    cache: RwLock<HashMap<String, String>>,
+    cache: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl Shields {
     pub fn new() -> Result<Self, Error> {
         // default headers
-        let mut headers = HeaderMap::new();
-        headers.insert(
+        let mut cache_control = HeaderMap::new();
+        cache_control.insert(
             "Cache-Control",
             HeaderValue::from_static("max-age=0, no-cache, no-store, must-revalidate"),
         );
 
         let client = reqwest::Client::builder()
-            .default_headers(headers)
+            .default_headers(cache_control)
             .pool_max_idle_per_host(5)
             .pool_idle_timeout(Duration::from_secs(120))
             .timeout(Duration::from_secs(5))
@@ -82,7 +83,7 @@ impl Shields {
         Ok(Shields {
             client,
             service_url: "https://shields.io/static/v1".to_string(),
-            cache: RwLock::new(HashMap::new()),
+            cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -90,7 +91,7 @@ impl Shields {
         let mut cache_writer = self.cache.write().await;
 
         // delete the old key if present; the old key will be having one less padding character than the new key
-        let old_key: &str = &key.as_str()[..key.len() - 1];
+        let old_key: &str = &key[..key.len() - 1];
         cache_writer.remove(old_key);
         tracing::info!("removed old key: {}", old_key);
 
@@ -121,7 +122,7 @@ impl ShieldsIoFetcher for Shields {
         let url = format!("{}?{}", self.service_url, query_params);
         let badge_template = self.client.get(url).send().await?.text().await?;
 
-        let badge = badge_template.replace(&padding, views.to_string().as_str());
+        let badge = badge_template.replace(&padding, &views.to_string());
         self.update_cache(query_params, badge_template).await;
 
         Ok(badge)

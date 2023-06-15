@@ -34,14 +34,13 @@ impl Xata {
             std::env::var("XATA_AUTH_TOKEN").expect("missing XATA_AUTH_TOKEN environment variable");
 
         // all request to xata.io will use bearer auth token
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", auth_token))?,
-        );
+        let mut auth_header = HeaderMap::new();
+        let mut auth_header_value = HeaderValue::from_str(&format!("Bearer {}", auth_token))?;
+        auth_header_value.set_sensitive(true);
+        auth_header.insert(header::AUTHORIZATION, auth_header_value);
 
         let client = reqwest::Client::builder()
-            .default_headers(headers)
+            .default_headers(auth_header)
             .pool_max_idle_per_host(5)
             .pool_idle_timeout(Duration::from_secs(120))
             .timeout(Duration::from_secs(5))
