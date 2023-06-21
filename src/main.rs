@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::routing::{get, head};
 use axum::Router;
 use dotenv::dotenv;
-use tokio::{signal, task};
+use tokio::signal;
 use tracing_subscriber::EnvFilter;
 
 use badge::Shields;
@@ -29,19 +29,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let shields_io_badge = Shields::new()?;
 
     // initialize state
-    let app_state = Arc::new(AppState::initialize(db, shields_io_badge).await.unwrap());
-    let app_state_clone = app_state.clone();
-    let app_state_destroy_clone = app_state.clone();
-
-    // async thread to update profile views in database at regular intervals
-    let _update_loop_handle = task::spawn(async move {
-        app_state_clone.update_loop().await;
-    });
+    let app_state = Arc::new(AppState::new(db, shields_io_badge));
 
     // setup application routes
     let app = Router::new()
         .route("/healthz", head(handler::health_check_handler))
-        .route("/count.svg", get(handler::profile_views_handler))
+        .route(
+            "/:user_name/counter.svg",
+            get(handler::profile_views_handler),
+        )
         .with_state(app_state);
 
     // async thread to keep server alive by hitting health check route at regular intervals
@@ -70,10 +66,6 @@ async fn main() -> Result<(), anyhow::Error> {
     if let Err(err) = server.await {
         tracing::error!("server encountered an error: {}", err);
     }
-
-    // cleanup resources on shutdown
-    app_state_destroy_clone.destroy().await;
-    tracing::info!("database connection closed, cleanup complete");
 
     Ok(())
 }
