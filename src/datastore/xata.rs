@@ -122,8 +122,6 @@ impl<'de> Deserialize<'de> for ProfileViews {
     {
         let value = Value::deserialize(deserializer)?;
 
-        tracing::info!("raw server response: {}", value);
-
         let count = value["results"]
             .get(1)
             .and_then(|result| result["columns"].get("count"))
