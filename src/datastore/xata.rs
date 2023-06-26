@@ -76,22 +76,6 @@ impl<'txn> Serialize for UpdateCountOperation<'txn> {
             "fields",
             &serde_json::json!({ "count": { "$increment": 1 } }),
         )?;
-        operations.end()
-    }
-}
-
-struct GetCountOperation<'txn> {
-    metadata: &'txn TransactionMetadata<'txn>,
-}
-
-impl<'txn> Serialize for GetCountOperation<'txn> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut operations = serializer.serialize_map(None)?;
-        operations.serialize_entry("table", &self.metadata.table)?;
-        operations.serialize_entry("id", &self.metadata.user_name)?;
         operations.serialize_entry("columns", &serde_json::json!(["count"]))?;
         operations.end()
     }
@@ -101,9 +85,6 @@ impl<'txn> Serialize for GetCountOperation<'txn> {
 enum Operations<'txn> {
     #[serde(rename = "update")]
     Update(&'txn UpdateCountOperation<'txn>),
-
-    #[serde(rename = "get")]
-    Get(&'txn GetCountOperation<'txn>),
 }
 
 #[derive(Serialize)]
@@ -123,7 +104,7 @@ impl<'de> Deserialize<'de> for ProfileViews {
         let value = Value::deserialize(deserializer)?;
 
         let count = value["results"]
-            .get(1)
+            .get(0)
             .and_then(|result| result["columns"].get("count"))
             .and_then(Value::as_u64)
             .ok_or_else(|| {
@@ -146,15 +127,10 @@ impl DatastoreOperations for Xata {
         let update_operation = UpdateCountOperation {
             metadata: &metadata,
         };
-        let get_operation = GetCountOperation {
-            metadata: &metadata,
-        };
-
         let update = Operations::Update(&update_operation);
-        let get = Operations::Get(&get_operation);
 
         let transaction = XataTransaction {
-            operations: vec![&update, &get],
+            operations: vec![&update],
         };
 
         let response = self
