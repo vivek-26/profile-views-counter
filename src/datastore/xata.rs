@@ -2,11 +2,14 @@ use std::time::Duration;
 
 use anyhow::Error;
 use axum::async_trait;
-use reqwest::header::{self, HeaderMap, HeaderValue};
+use reqwest::{
+    header::{self, HeaderMap, HeaderValue},
+    Response, StatusCode,
+};
 use serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
-use super::DatastoreOperations;
+use super::{DatastoreError, DatastoreOperations};
 
 pub struct Xata {
     client: reqwest::Client,
@@ -45,11 +48,11 @@ impl Xata {
         })
     }
 
-    async fn handle_error_response(&self, response: reqwest::Response) -> Error {
+    async fn handle_unexpected_error(&self, response: Response) -> DatastoreError {
         let status_code = response.status();
         let server_error_msg = response.text().await.unwrap_or_else(|_| "none".to_string());
-        Error::msg(format!(
-            "status code -> {}, server error message -> {}",
+        DatastoreError::Unexpected(format!(
+            "status code: {}, server error message: {}",
             status_code, server_error_msg
         ))
     }
@@ -108,17 +111,29 @@ impl<'de> Deserialize<'de> for ProfileViews {
             .and_then(|result| result["columns"].get("count"))
             .and_then(Value::as_u64)
             .ok_or_else(|| {
-                tracing::error!("failed to deserialize server response: {}", value);
-                serde::de::Error::custom("failed to deserialize server response")
+                serde::de::Error::custom(format_args!(
+                    "failed to deserialize server response: {}",
+                    value
+                ))
             })?;
 
         Ok(ProfileViews { count })
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct TransactionError {
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct XataTransactionError {
+    errors: Vec<TransactionError>,
+}
+
 #[async_trait]
 impl DatastoreOperations for Xata {
-    async fn get_latest_views(&self, user_name: &str) -> Result<u64, Error> {
+    async fn get_latest_views(&self, user_name: &str) -> Result<u64, DatastoreError> {
         let metadata = TransactionMetadata {
             table: self.table_name.as_str(),
             user_name,
@@ -133,18 +148,44 @@ impl DatastoreOperations for Xata {
             operations: vec![&update],
         };
 
-        let response = self
+        let update_txn_resp = self
             .client
             .post(self.db_endpoint.as_str())
             .json(&transaction)
             .send()
-            .await?;
+            .await
+            .map_err(DatastoreError::Client)?;
 
-        if !response.status().is_success() {
-            return Err(self.handle_error_response(response).await);
+        // xata returns 400 if transaction fails with some error.
+        // reference - https://xata.io/docs/api-reference/db/db_branch_name/transaction#execute-a-transaction-on-a-branch
+        match update_txn_resp.status() {
+            StatusCode::OK => {
+                let count = update_txn_resp.json::<ProfileViews>().await?.count;
+                Ok(count)
+            }
+            StatusCode::BAD_REQUEST => {
+                let txn_error_resp = update_txn_resp
+                    .json::<XataTransactionError>()
+                    .await
+                    .map_err(DatastoreError::Client)?;
+
+                let txn_error = txn_error_resp
+                    .errors
+                    .iter()
+                    .find(|err| {
+                        err.message.contains(user_name) && err.message.contains("not found")
+                    })
+                    .map(|_| Err(DatastoreError::UserNotFound(user_name.to_string())))
+                    .unwrap_or_else(|| {
+                        Err(DatastoreError::Unexpected(format!(
+                            "failed to update count for user: `{}`, error: {:?}",
+                            user_name, txn_error_resp
+                        )))
+                    });
+
+                txn_error
+            }
+            _ => Err(self.handle_unexpected_error(update_txn_resp).await),
         }
-
-        let count = response.json::<ProfileViews>().await?.count;
-        Ok(count)
     }
 }
