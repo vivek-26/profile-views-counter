@@ -58,27 +58,44 @@ impl Xata {
     }
 }
 
+enum OperationType {
+    Update,
+    Insert,
+}
+
 struct TransactionMetadata<'txn> {
     table: &'txn str,
     user_name: &'txn str,
+    op_type: OperationType,
 }
 
-struct UpdateCountOperation<'txn> {
+struct CountOperation<'txn> {
     metadata: &'txn TransactionMetadata<'txn>,
 }
 
-impl<'txn> Serialize for UpdateCountOperation<'txn> {
+impl<'txn> Serialize for CountOperation<'txn> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         let mut operations = serializer.serialize_map(None)?;
         operations.serialize_entry("table", &self.metadata.table)?;
-        operations.serialize_entry("id", &self.metadata.user_name)?;
-        operations.serialize_entry(
-            "fields",
-            &serde_json::json!({ "count": { "$increment": 1 } }),
-        )?;
+        match self.metadata.op_type {
+            OperationType::Update => {
+                operations.serialize_entry("id", &self.metadata.user_name)?;
+                operations.serialize_entry(
+                    "fields",
+                    &serde_json::json!({ "count": { "$increment": 1 } }),
+                )?;
+            }
+            OperationType::Insert => {
+                operations.serialize_entry(
+                    "record",
+                    &serde_json::json!({ "id": &self.metadata.user_name, "count": 1 }),
+                )?;
+                operations.serialize_entry("createOnly", &true)?;
+            }
+        }
         operations.serialize_entry("columns", &serde_json::json!(["count"]))?;
         operations.end()
     }
@@ -87,7 +104,10 @@ impl<'txn> Serialize for UpdateCountOperation<'txn> {
 #[derive(Serialize)]
 enum Operations<'txn> {
     #[serde(rename = "update")]
-    Update(&'txn UpdateCountOperation<'txn>),
+    Update(&'txn CountOperation<'txn>),
+
+    #[serde(rename = "insert")]
+    Insert(&'txn CountOperation<'txn>),
 }
 
 #[derive(Serialize)]
@@ -137,9 +157,10 @@ impl DatastoreOperations for Xata {
         let metadata = TransactionMetadata {
             table: self.table_name.as_str(),
             user_name,
+            op_type: OperationType::Update,
         };
 
-        let update_operation = UpdateCountOperation {
+        let update_operation = CountOperation {
             metadata: &metadata,
         };
         let update = Operations::Update(&update_operation);
@@ -160,7 +181,12 @@ impl DatastoreOperations for Xata {
         // reference - https://xata.io/docs/api-reference/db/db_branch_name/transaction#execute-a-transaction-on-a-branch
         match update_txn_resp.status() {
             StatusCode::OK => {
-                let count = update_txn_resp.json::<ProfileViews>().await?.count;
+                let count = update_txn_resp
+                    .json::<ProfileViews>()
+                    .await
+                    .map_err(DatastoreError::Client)?
+                    .count;
+
                 Ok(count)
             }
             StatusCode::BAD_REQUEST => {
@@ -186,6 +212,44 @@ impl DatastoreOperations for Xata {
                 txn_error
             }
             _ => Err(self.handle_unexpected_error(update_txn_resp).await),
+        }
+    }
+
+    async fn onboard_user(&self, user_name: &str) -> Result<u64, DatastoreError> {
+        let metadata = TransactionMetadata {
+            table: self.table_name.as_str(),
+            user_name,
+            op_type: OperationType::Insert,
+        };
+
+        let insert_operation = CountOperation {
+            metadata: &metadata,
+        };
+        let insert = Operations::Insert(&insert_operation);
+
+        let transaction = XataTransaction {
+            operations: vec![&insert],
+        };
+
+        let insert_txn_resp = self
+            .client
+            .post(self.db_endpoint.as_str())
+            .json(&transaction)
+            .send()
+            .await
+            .map_err(DatastoreError::Client)?;
+
+        match insert_txn_resp.status() {
+            StatusCode::OK => {
+                let count = insert_txn_resp
+                    .json::<ProfileViews>()
+                    .await
+                    .map_err(DatastoreError::Client)?
+                    .count;
+
+                Ok(count)
+            }
+            _ => Err(self.handle_unexpected_error(insert_txn_resp).await),
         }
     }
 }

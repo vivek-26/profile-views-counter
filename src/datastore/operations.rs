@@ -3,6 +3,7 @@ use axum::async_trait;
 #[async_trait]
 pub trait Operations {
     async fn get_latest_views(&self, user_name: &str) -> Result<u64, Error>;
+    async fn onboard_user(&self, user_name: &str) -> Result<u64, Error>;
 }
 
 #[derive(thiserror::Error, Debug)]
