@@ -96,7 +96,7 @@ impl Shields {
         tracing::info!("removed old key: {}", old_key);
 
         // insert the new key
-        tracing::info!("inserting key: {}", key);
+        tracing::info!("inserting key: {}", &key);
         cache_writer.insert(key, value);
     }
 }

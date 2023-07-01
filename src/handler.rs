@@ -8,7 +8,7 @@ use axum::{
 use serde::Deserialize;
 
 use super::badge::{ShieldsIoFetcher, ShieldsIoParams};
-use super::datastore::DatastoreOperations;
+use super::datastore::{DatastoreError, DatastoreOperations};
 use super::state::AppState;
 
 #[derive(Deserialize)]
@@ -29,8 +29,22 @@ pub async fn profile_views_handler(
 ) -> Response {
     let views = match state.db.get_latest_views(&path_params.user_name).await {
         Ok(views) => views,
-        Err(e) => {
-            tracing::error!("failed to fetch views from database, reason: {}", e);
+        Err(DatastoreError::UserNotFound(user)) => {
+            tracing::info!("user `{}` not found, onboarding", &user);
+
+            match state.db.onboard_user(&user).await {
+                Ok(views) => {
+                    tracing::info!("user `{}` onboarded", &user);
+                    views
+                }
+                Err(err) => {
+                    tracing::error!("failed to onboard user `{}`, reason: {}", &user, err);
+                    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                }
+            }
+        }
+        Err(err) => {
+            tracing::error!("failed to fetch views from database, reason: {}", err);
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
@@ -49,8 +63,8 @@ pub async fn profile_views_handler(
             badge,
         )
             .into_response(),
-        Err(e) => {
-            tracing::error!("failed to fetch badge from shields.io, reason: {}", e);
+        Err(err) => {
+            tracing::error!("failed to fetch badge from shields.io, reason: {}", err);
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
