@@ -112,7 +112,7 @@ enum Operations<'txn> {
 
 #[derive(Serialize)]
 struct XataTransaction<'txn> {
-    operations: Vec<&'txn Operations<'txn>>,
+    operations: [&'txn Operations<'txn>; 1],
 }
 
 struct ProfileViews {
@@ -148,7 +148,7 @@ struct TransactionError {
 
 #[derive(Debug, Deserialize)]
 struct XataTransactionError {
-    errors: Vec<TransactionError>,
+    errors: [TransactionError; 1],
 }
 
 #[async_trait]
@@ -166,7 +166,7 @@ impl DatastoreOperations for Xata {
         let update = Operations::Update(&update_operation);
 
         let transaction = XataTransaction {
-            operations: vec![&update],
+            operations: [&update],
         };
 
         let update_txn_resp = self
@@ -228,7 +228,7 @@ impl DatastoreOperations for Xata {
         let insert = Operations::Insert(&insert_operation);
 
         let transaction = XataTransaction {
-            operations: vec![&insert],
+            operations: [&insert],
         };
 
         let insert_txn_resp = self
