@@ -69,11 +69,11 @@ struct TransactionMetadata<'txn> {
     op_type: OperationType,
 }
 
-struct CountOperation<'txn> {
+struct UserViewsOperation<'txn> {
     metadata: &'txn TransactionMetadata<'txn>,
 }
 
-impl<'txn> Serialize for CountOperation<'txn> {
+impl<'txn> Serialize for UserViewsOperation<'txn> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -104,10 +104,10 @@ impl<'txn> Serialize for CountOperation<'txn> {
 #[derive(Serialize)]
 enum Operations<'txn> {
     #[serde(rename = "update")]
-    Update(&'txn CountOperation<'txn>),
+    Update(&'txn UserViewsOperation<'txn>),
 
     #[serde(rename = "insert")]
-    Insert(&'txn CountOperation<'txn>),
+    Insert(&'txn UserViewsOperation<'txn>),
 }
 
 #[derive(Serialize)]
@@ -160,7 +160,7 @@ impl DatastoreOperations for Xata {
             op_type: OperationType::Update,
         };
 
-        let update_operation = CountOperation {
+        let update_operation = UserViewsOperation {
             metadata: &metadata,
         };
         let update = Operations::Update(&update_operation);
@@ -222,7 +222,7 @@ impl DatastoreOperations for Xata {
             op_type: OperationType::Insert,
         };
 
-        let insert_operation = CountOperation {
+        let insert_operation = UserViewsOperation {
             metadata: &metadata,
         };
         let insert = Operations::Insert(&insert_operation);
@@ -251,5 +251,59 @@ impl DatastoreOperations for Xata {
             }
             _ => Err(self.handle_unexpected_error(insert_txn_resp).await),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_serialize_update_user_views_operation() {
+        let metadata = TransactionMetadata {
+            table: "profile_views",
+            user_name: "test_user",
+            op_type: OperationType::Update,
+        };
+
+        let update_operation = UserViewsOperation {
+            metadata: &metadata,
+        };
+        let update = Operations::Update(&update_operation);
+
+        let transaction = XataTransaction {
+            operations: [&update],
+        };
+
+        let serialized = serde_json::to_string(&transaction);
+        assert!(serialized.is_ok());
+
+        let expected = r#"{"operations":[{"update":{"table":"profile_views","id":"test_user","fields":{"count":{"$increment":1}},"columns":["count"]}}]}"#;
+        assert_eq!(serialized.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_serialize_insert_user_views_operation() {
+        let metadata = TransactionMetadata {
+            table: "profile_views",
+            user_name: "test_user",
+            op_type: OperationType::Insert,
+        };
+
+        let insert_operation = UserViewsOperation {
+            metadata: &metadata,
+        };
+        let insert = Operations::Insert(&insert_operation);
+
+        let transaction = XataTransaction {
+            operations: [&insert],
+        };
+
+        let serialized = serde_json::to_string(&transaction);
+        assert!(serialized.is_ok());
+
+        let expected = r#"{"operations":[{"insert":{"table":"profile_views","record":{"count":1,"id":"test_user"},"createOnly":true,"columns":["count"]}}]}"#;
+        assert_eq!(serialized.unwrap(), expected);
     }
 }
