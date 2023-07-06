@@ -58,7 +58,8 @@ impl Xata {
     }
 }
 
-enum OperationType {
+#[derive(Clone)]
+pub(crate) enum OperationType {
     Update,
     Insert,
 }
@@ -70,7 +71,7 @@ struct TransactionMetadata<'txn> {
 }
 
 struct UserViewsOperation<'txn> {
-    metadata: &'txn TransactionMetadata<'txn>,
+    metadata: TransactionMetadata<'txn>,
 }
 
 impl<'txn> Serialize for UserViewsOperation<'txn> {
@@ -104,15 +105,15 @@ impl<'txn> Serialize for UserViewsOperation<'txn> {
 #[derive(Serialize)]
 enum Operations<'txn> {
     #[serde(rename = "update")]
-    Update(&'txn UserViewsOperation<'txn>),
+    Update(UserViewsOperation<'txn>),
 
     #[serde(rename = "insert")]
-    Insert(&'txn UserViewsOperation<'txn>),
+    Insert(UserViewsOperation<'txn>),
 }
 
 #[derive(Serialize)]
-struct XataTransaction<'txn> {
-    operations: [&'txn Operations<'txn>; 1],
+pub(crate) struct XataTransaction<'txn> {
+    operations: [Operations<'txn>; 1],
 }
 
 struct ProfileViews {
@@ -160,13 +161,8 @@ impl DatastoreOperations for Xata {
             op_type: OperationType::Update,
         };
 
-        let update_operation = UserViewsOperation {
-            metadata: &metadata,
-        };
-        let update = Operations::Update(&update_operation);
-
         let transaction = XataTransaction {
-            operations: [&update],
+            operations: [Operations::Update(UserViewsOperation { metadata })],
         };
 
         let update_txn_resp = self
@@ -222,13 +218,8 @@ impl DatastoreOperations for Xata {
             op_type: OperationType::Insert,
         };
 
-        let insert_operation = UserViewsOperation {
-            metadata: &metadata,
-        };
-        let insert = Operations::Insert(&insert_operation);
-
         let transaction = XataTransaction {
-            operations: [&insert],
+            operations: [Operations::Insert(UserViewsOperation { metadata })],
         };
 
         let insert_txn_resp = self
@@ -261,22 +252,8 @@ mod tests {
 
     #[test]
     fn test_serialize_update_user_views_operation() {
-        let metadata = TransactionMetadata {
-            table: "profile_views",
-            user_name: "test_user",
-            op_type: OperationType::Update,
-        };
-
-        let update_operation = UserViewsOperation {
-            metadata: &metadata,
-        };
-        let update = Operations::Update(&update_operation);
-
-        let transaction = XataTransaction {
-            operations: [&update],
-        };
-
-        let serialized = serde_json::to_string(&transaction);
+        let serialized =
+            serde_json::to_string(&test_helper::user_views_transaction(OperationType::Update));
         assert!(serialized.is_ok());
 
         let expected = r#"{"operations":[{"update":{"table":"profile_views","id":"test_user","fields":{"count":{"$increment":1}},"columns":["count"]}}]}"#;
@@ -285,25 +262,33 @@ mod tests {
 
     #[test]
     fn test_serialize_insert_user_views_operation() {
-        let metadata = TransactionMetadata {
-            table: "profile_views",
-            user_name: "test_user",
-            op_type: OperationType::Insert,
-        };
-
-        let insert_operation = UserViewsOperation {
-            metadata: &metadata,
-        };
-        let insert = Operations::Insert(&insert_operation);
-
-        let transaction = XataTransaction {
-            operations: [&insert],
-        };
-
-        let serialized = serde_json::to_string(&transaction);
+        let serialized =
+            serde_json::to_string(&test_helper::user_views_transaction(OperationType::Insert));
         assert!(serialized.is_ok());
 
         let expected = r#"{"operations":[{"insert":{"table":"profile_views","record":{"count":1,"id":"test_user"},"createOnly":true,"columns":["count"]}}]}"#;
         assert_eq!(serialized.unwrap(), expected);
+    }
+}
+
+#[cfg(test)]
+mod test_helper {
+    use super::*;
+
+    pub(crate) fn user_views_transaction(op: OperationType) -> XataTransaction<'static> {
+        let metadata = TransactionMetadata {
+            table: "profile_views",
+            user_name: "test_user",
+            op_type: op.clone(),
+        };
+
+        match op {
+            OperationType::Update => XataTransaction {
+                operations: [Operations::Update(UserViewsOperation { metadata })],
+            },
+            OperationType::Insert => XataTransaction {
+                operations: [Operations::Insert(UserViewsOperation { metadata })],
+            },
+        }
     }
 }
