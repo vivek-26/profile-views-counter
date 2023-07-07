@@ -19,18 +19,13 @@ pub struct Xata {
 
 impl Xata {
     pub fn new() -> Result<Xata, Error> {
-        let db_endpoint = std::env::var("XATA_DB_ENDPOINT")
-            .expect("missing XATA_TABLE_ENDPOINT environment variable");
-
-        let auth_token =
-            std::env::var("XATA_AUTH_TOKEN").expect("missing XATA_AUTH_TOKEN environment variable");
-
-        let table_name =
-            std::env::var("XATA_TABLE_NAME").expect("missing XATA_TABLE_NAME environment variable");
+        let db_endpoint = std::env::var("XATA_DB_ENDPOINT")?;
+        let api_key = std::env::var("XATA_API_KEY")?;
+        let table_name = std::env::var("XATA_TABLE_NAME")?;
 
         // all request to xata.io will use bearer auth token
         let mut auth_header = HeaderMap::new();
-        let mut auth_header_value = HeaderValue::from_str(&format!("Bearer {}", auth_token))?;
+        let mut auth_header_value = HeaderValue::from_str(&format!("Bearer {}", api_key))?;
         auth_header_value.set_sensitive(true);
         auth_header.insert(header::AUTHORIZATION, auth_header_value);
 
@@ -248,37 +243,60 @@ impl DatastoreOperations for Xata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
     use serde_json;
 
     #[test]
     fn test_serialize_update_user_views_operation() {
         let serialized =
-            serde_json::to_string(&test_helper::user_views_transaction(OperationType::Update));
-        assert!(serialized.is_ok());
+            serde_json::to_string(&test_helpers::user_views_transaction(OperationType::Update))
+                .unwrap();
 
-        let expected = r#"{"operations":[{"update":{"table":"profile_views","id":"test_user","fields":{"count":{"$increment":1}},"columns":["count"]}}]}"#;
-        assert_eq!(serialized.unwrap(), expected);
+        let expected = format!(
+            r#"{{"operations":[{{"update":{{"table":"{}","id":"{}","fields":{{"count":{{"$increment":1}}}},"columns":["count"]}}}}]}}"#,
+            test_helpers::TEST_TABLE_NAME,
+            test_helpers::TEST_USER_NAME
+        );
+        assert_eq!(serialized, expected);
     }
 
     #[test]
     fn test_serialize_insert_user_views_operation() {
         let serialized =
-            serde_json::to_string(&test_helper::user_views_transaction(OperationType::Insert));
-        assert!(serialized.is_ok());
+            serde_json::to_string(&test_helpers::user_views_transaction(OperationType::Insert))
+                .unwrap();
 
-        let expected = r#"{"operations":[{"insert":{"table":"profile_views","record":{"count":1,"id":"test_user"},"createOnly":true,"columns":["count"]}}]}"#;
-        assert_eq!(serialized.unwrap(), expected);
+        let expected = format!(
+            r#"{{"operations":[{{"insert":{{"table":"{}","record":{{"count":1,"id":"{}"}},"createOnly":true,"columns":["count"]}}}}]}}"#,
+            test_helpers::TEST_TABLE_NAME,
+            test_helpers::TEST_USER_NAME
+        );
+        assert_eq!(serialized, expected);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn it_gets_latest_views_for_onboarded_user() {
+        test_helpers::set_env_variables();
+        let xata = Xata::new().unwrap();
+        xata.get_latest_views("test_user").await.unwrap();
     }
 }
 
 #[cfg(test)]
-mod test_helper {
+mod test_helpers {
     use super::*;
+
+    pub(crate) static TEST_TABLE_NAME: &str = "profile_views";
+    pub(crate) static TEST_USER_NAME: &str = "test_user";
+    pub(crate) static TEST_API_KEY: &str = "test_api_key";
+    pub(crate) static TEST_DB_ENDPOINT: &str =
+        "http://localhost:8080/v1/branch/test_branch/transaction";
 
     pub(crate) fn user_views_transaction(op: OperationType) -> XataTransaction<'static> {
         let metadata = TransactionMetadata {
-            table: "profile_views",
-            user_name: "test_user",
+            table: TEST_TABLE_NAME,
+            user_name: TEST_USER_NAME,
             op_type: op.clone(),
         };
 
@@ -290,5 +308,11 @@ mod test_helper {
                 operations: [Operations::Insert(UserViewsOperation { metadata })],
             },
         }
+    }
+
+    pub(crate) fn set_env_variables() {
+        std::env::set_var("XATA_API_KEY", TEST_API_KEY);
+        std::env::set_var("XATA_DB_ENDPOINT", TEST_DB_ENDPOINT);
+        std::env::set_var("XATA_TABLE_NAME", TEST_TABLE_NAME);
     }
 }
