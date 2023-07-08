@@ -245,6 +245,7 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
     use serde_json;
+    use serial_test::serial;
 
     #[test]
     fn test_serialize_update_user_views_operation() {
@@ -275,11 +276,151 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[serial]
     async fn it_gets_latest_views_for_onboarded_user() {
-        test_helpers::set_env_variables();
-        let xata = Xata::new().unwrap();
-        xata.get_latest_views("test_user").await.unwrap();
+        let expected_count = 998 as u64;
+
+        let mock = test_helpers::mock_xata_server()
+            .match_body(
+                format!(
+                    r#"{{"operations":[{{"update":{{"table":"{}","id":"{}","fields":{{"count":{{"$increment":1}}}},"columns":["count"]}}}}]}}"#,
+                    test_helpers::TEST_TABLE_NAME,
+                    test_helpers::TEST_USER_NAME
+                ).as_str(),
+            )
+            .with_status(200)
+            .with_body(
+                format!(r#"{{"results":[{{"columns":{{"count":{}}},"id":"{}","operation":"update","rows":1}}]}}"#, expected_count, test_helpers::TEST_USER_NAME
+                ).as_str())
+            .create_async().await;
+
+        let count = Xata::new()
+            .unwrap()
+            .get_latest_views(test_helpers::TEST_USER_NAME)
+            .await;
+
+        mock.assert_async().await;
+        assert_eq!(count.unwrap(), 998);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn it_returns_user_not_found_error_for_non_onboarded_user() {
+        let mock = test_helpers::mock_xata_server()
+            .match_body(
+                format!(
+                    r#"{{"operations":[{{"update":{{"table":"{}","id":"{}","fields":{{"count":{{"$increment":1}}}},"columns":["count"]}}}}]}}"#,
+                    test_helpers::TEST_TABLE_NAME,
+                    test_helpers::TEST_USER_NAME
+                ).as_str(),
+            )
+            .with_status(400)
+            .with_body(
+                format!(r#"{{"errors":[{{"index":0,"message":"table [{}]: record [{}] not found"}}]}}"#,
+                        test_helpers::TEST_TABLE_NAME,
+                        test_helpers::TEST_USER_NAME
+                ).as_str(),
+            )
+            .create_async().await;
+
+        let count = Xata::new()
+            .unwrap()
+            .get_latest_views(test_helpers::TEST_USER_NAME)
+            .await;
+
+        mock.assert_async().await;
+        assert_eq!(
+            count.unwrap_err().to_string(),
+            DatastoreError::UserNotFound(test_helpers::TEST_USER_NAME.to_string()).to_string()
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn it_handles_unexpected_error_while_fetching_latest_views() {
+        let mock = test_helpers::mock_xata_server()
+            .match_body(
+                format!(
+                    r#"{{"operations":[{{"update":{{"table":"{}","id":"{}","fields":{{"count":{{"$increment":1}}}},"columns":["count"]}}}}]}}"#,
+                    test_helpers::TEST_TABLE_NAME,
+                    test_helpers::TEST_USER_NAME
+                ).as_str(),
+            )
+            .with_status(500)
+            .with_body(r#"unavailable"#)
+            .create_async().await;
+
+        let count = Xata::new()
+            .unwrap()
+            .get_latest_views(test_helpers::TEST_USER_NAME)
+            .await;
+
+        mock.assert_async().await;
+        assert_eq!(
+            count.unwrap_err().to_string(),
+            DatastoreError::Unexpected(
+                r#"status code: 500 Internal Server Error, server error message: unavailable"#
+                    .to_string()
+            )
+            .to_string()
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn it_onboards_user_successfully() {
+        let mock = test_helpers::mock_xata_server()
+            .match_body(
+                format!(
+                    r#"{{"operations":[{{"insert":{{"table":"{}","record":{{"count":1,"id":"{}"}},"createOnly":true,"columns":["count"]}}}}]}}"#,
+                    test_helpers::TEST_TABLE_NAME,
+                    test_helpers::TEST_USER_NAME
+                ).as_str(),
+            )
+            .with_status(200)
+            .with_body(
+                format!(r#"{{"results":[{{"columns":{{"count":1}},"id":"{}","operation":"insert","rows":1}}]}}"#, test_helpers::TEST_USER_NAME
+                ).as_str())
+            .create_async().await;
+
+        let count = Xata::new()
+            .unwrap()
+            .onboard_user(test_helpers::TEST_USER_NAME)
+            .await;
+
+        mock.assert_async().await;
+        assert_eq!(count.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn it_handles_unexpected_error_while_onboarding_user() {
+        let mock = test_helpers::mock_xata_server()
+            .match_body(
+                format!(
+                    r#"{{"operations":[{{"insert":{{"table":"{}","record":{{"count":1,"id":"{}"}},"createOnly":true,"columns":["count"]}}}}]}}"#,
+                    test_helpers::TEST_TABLE_NAME,
+                    test_helpers::TEST_USER_NAME
+                ).as_str(),
+            )
+            .with_status(500)
+            .with_body(r#"unavailable"#)
+            .create_async().await;
+
+        let count = Xata::new()
+            .unwrap()
+            .onboard_user(test_helpers::TEST_USER_NAME)
+            .await;
+
+        mock.assert_async().await;
+        assert_eq!(
+            count.unwrap_err().to_string(),
+            DatastoreError::Unexpected(
+                r#"status code: 500 Internal Server Error, server error message: unavailable"#
+                    .to_string()
+            )
+            .to_string()
+        );
     }
 }
 
@@ -290,8 +431,7 @@ mod test_helpers {
     pub(crate) static TEST_TABLE_NAME: &str = "profile_views";
     pub(crate) static TEST_USER_NAME: &str = "test_user";
     pub(crate) static TEST_API_KEY: &str = "test_api_key";
-    pub(crate) static TEST_DB_ENDPOINT: &str =
-        "http://localhost:8080/v1/branch/test_branch/transaction";
+    pub(crate) static TEST_DB_ENDPOINT_PATH: &str = "/v1/branch/test_branch/transaction";
 
     pub(crate) fn user_views_transaction(op: OperationType) -> XataTransaction<'static> {
         let metadata = TransactionMetadata {
@@ -310,9 +450,21 @@ mod test_helpers {
         }
     }
 
-    pub(crate) fn set_env_variables() {
+    pub(crate) fn set_env_variables(db_endpoint: String) {
         std::env::set_var("XATA_API_KEY", TEST_API_KEY);
-        std::env::set_var("XATA_DB_ENDPOINT", TEST_DB_ENDPOINT);
         std::env::set_var("XATA_TABLE_NAME", TEST_TABLE_NAME);
+        std::env::set_var("XATA_DB_ENDPOINT", db_endpoint);
+    }
+
+    pub(crate) fn mock_xata_server() -> mockito::Mock {
+        let mut server = mockito::Server::new();
+        let url = format!("{}{}", server.url(), TEST_DB_ENDPOINT_PATH);
+        set_env_variables(url.clone());
+
+        let mock = server
+            .mock("POST", TEST_DB_ENDPOINT_PATH)
+            .match_header("Authorization", &*format!("Bearer {}", TEST_API_KEY));
+
+        mock
     }
 }
